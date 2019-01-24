@@ -1,6 +1,6 @@
-package com.simplechain.node;
+package com.simplechain.protocol;
 
-import com.simplechain.data.BaseMessage;
+import com.simplechain.data.NodeData;
 
 public class NodeProtocol {
 
@@ -9,8 +9,9 @@ public class NodeProtocol {
         public String connectionIp;
         public int connectionPort;
 
-        public PingMessage() { super(TYPE); }
+        public PingMessage(NodeData nodeData) { super(nodeData.name, nodeData.version, nodeData.connectionIp, nodeData.connectionPort, TYPE); }
 
+        @Override
         public String toString() {
             return super.toString();
         }
@@ -22,8 +23,9 @@ public class NodeProtocol {
         public int connectionPort;
         public String version;
 
-        public PongMessage() { super(TYPE); }
+        public PongMessage(NodeData nodeData) { super(nodeData.name, nodeData.version, nodeData.connectionIp, nodeData.connectionPort, TYPE); }
 
+        @Override
         public String toString() {
             return super.toString();
         }
@@ -34,7 +36,7 @@ public class NodeProtocol {
         public int errorCode;
         public String errorMsg;
 
-        public NodeErrorMsg() { super(TYPE); }
+        public NodeErrorMsg(NodeData nodeData) { super(nodeData.name, nodeData.version, nodeData.connectionIp, nodeData.connectionPort, TYPE); }
 
         @Override
         public String toString() {

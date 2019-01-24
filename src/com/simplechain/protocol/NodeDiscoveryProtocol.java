@@ -1,13 +1,13 @@
-package com.simplechain.node;
+package com.simplechain.protocol;
 
-import com.simplechain.data.BaseMessage;
-import com.simplechain.network.client.NetworkClient;
-import com.simplechain.network.server.NetworkServerInConnection;
+import com.simplechain.data.NodeData;
 
 import java.util.List;
 
 public class NodeDiscoveryProtocol {
 
+    /*
+    // Hello message to another node for registering this node
     static public class HelloMsg extends BaseMessage {
         static final public String TYPE = "HELLO_MSG";
         public NodeData node;
@@ -69,4 +69,5 @@ public class NodeDiscoveryProtocol {
             return super.toString();
         }
     }
+    */
 }

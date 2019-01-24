@@ -1,4 +1,4 @@
-package com.simplechain.node;
+package com.simplechain.data;
 
 import com.simplechain.network.client.NetworkClient;
 import com.simplechain.network.server.NetworkServerInConnection;

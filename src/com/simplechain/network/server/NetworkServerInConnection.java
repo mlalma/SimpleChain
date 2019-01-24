@@ -1,6 +1,6 @@
 package com.simplechain.network.server;
 
-import com.simplechain.data.BaseMessage;
+import com.simplechain.protocol.BaseMessage;
 
 import java.io.BufferedReader;
 import java.io.IOException;
