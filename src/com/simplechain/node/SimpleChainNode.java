@@ -60,10 +60,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     // Handles ping protocol by sending pong protocol back
     public void handlePingMessage(String message) {
         NodeProtocol.PingMessage pingMessage = gson.fromJson(message, NodeProtocol.PingMessage.class);
-        NodeProtocol.PongMessage pongMessage = new NodeProtocol.PongMessage();
-        pongMessage.connectionIp = address.getHostAddress();
-        pongMessage.connectionPort = port;
-        pongMessage.version = version;
+        NodeProtocol.PongMessage pongMessage = new NodeProtocol.PongMessage(version, address.getHostAddress(), port, pingMessage.nonce);
         try {
             NetworkClient msgReply = new NetworkClient(
                     InetAddress.getByName(pingMessage.connectionIp),
@@ -83,7 +80,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     }
 
     // Handles Hello handshake protocol for other node to register to this node
-    public void handleHelloMessage(String message) {
+    /*public void handleHelloMessage(String message) {
         NodeDiscoveryProtocol.HelloMsg helloMsg = gson.fromJson(message, NodeDiscoveryProtocol.HelloMsg.class);
         NodeDiscoveryProtocol.HelloMsgAck msgAck = new NodeDiscoveryProtocol.HelloMsgAck();
         msgAck.connectionIp = address.getHostAddress();
@@ -99,6 +96,9 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+    }*/
+
+    private void handleHelloMessage(String message) {
     }
 
     public void messageReceived(NetworkServerInConnection connection, String message) {
@@ -109,7 +109,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
             handlePingMessage(message);
         } else if (msg.type.equalsIgnoreCase(NodeProtocol.PongMessage.TYPE)) {
             handlePongMessage(message);
-        } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsg.TYPE)) {
+        } /*else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsg.TYPE)) {
             handleHelloMessage(message);
         } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsgAck.TYPE)) {
             NodeDiscoveryProtocol.HelloMsgAck helloMsgAck = gson.fromJson(message, NodeDiscoveryProtocol.HelloMsgAck.class);
@@ -202,10 +202,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     public boolean sendPing(InetAddress senderAddress, int senderPortNum) {
         LOG("Sending Ping protocol to node address " + senderAddress.toString() + ":" + senderPortNum);
 
-        NodeProtocol.PingMessage pingMessage = new NodeProtocol.PingMessage();
-        pingMessage.connectionIp = this.address.getHostAddress();
-        pingMessage.connectionPort = port;
-
+        NodeProtocol.PingMessage pingMessage = new NodeProtocol.PingMessage(version, address.getHostAddress(), port, UUID.randomUUID().toString());
         try {
             NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
             msg.sendData(pingMessage.toString());

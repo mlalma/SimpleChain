@@ -30,12 +30,6 @@ public class Main {
         node.sendPing(TEST_DOORMAN_IP_ADDR, TEST_DOORMAN_PORT_NUM);
         node2.sendPing(TEST_DOORMAN_IP_ADDR, TEST_DOORMAN_PORT_NUM);
         node3.sendPing(TEST_DOORMAN_IP_ADDR, TEST_DOORMAN_PORT_NUM);
-
-        node3.sendPing(TEST_DOORMAN_IP_ADDR, 4445);
-
-        // TO_DO NEXT: announceNode() + requestNodeList() + requestNodeListReply()
-
-        //node.connectToNodes();
     }
 
     // Entry point to the application
