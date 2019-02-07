@@ -30,6 +30,7 @@ public class NodeProtocol {
     // Taken from ping message
     public final String nonce;
 
+    // Constructor
     public PongMessage(
         final String protocolVersion,
         final String senderIp,

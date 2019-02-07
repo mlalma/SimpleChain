@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 
 // Base message class for all the messages between nodes
 public class BaseMessage {
-  
+
   static final Gson gson = new Gson();
 
   public static final String END_OF_MESSAGE_MARKER = "<eom>";
