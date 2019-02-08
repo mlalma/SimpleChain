@@ -44,16 +44,11 @@ public class NodeProtocol {
   // Error message coming from node
   public static class NodeErrorMsg extends BaseMessage {
     public static final String TYPE = "NODE_ERROR_MSG";
-    public int errorCode;
     public String errorMsg;
 
-    public NodeErrorMsg(NodeData nodeData) {
-      super(nodeData.name, nodeData.version, nodeData.connectionIp, nodeData.connectionPort, TYPE);
-    }
-
-    @Override
-    public String toString() {
-      return super.toString();
+    public NodeErrorMsg(final String protocolVersion, final String senderIp, final int senderPort, final String errorMsg) {
+      super(null, protocolVersion, senderIp, senderPort, TYPE);
+      this.errorMsg = errorMsg;
     }
   }
 }
