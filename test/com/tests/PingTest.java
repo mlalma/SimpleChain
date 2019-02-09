@@ -13,9 +13,9 @@ import org.junit.Test;
 
 public class PingTest {
 
-  private InetAddress DOORMAN_IP_ADDR;
-  private final int DOORMAN_PORT_NUM = 4444;
-  private final String DOORMAN_NODE_NAME = "Doorman";
+  private InetAddress BOOTSTRAP_NODE_IP_ADDR;
+  private final int BOOTSTRAP_NODE_PORT_NUM = 4444;
+  private final String BOOTSTRAP_NODE_NAME = "Bootstrap";
 
   private InetAddress TEST_NODE_IP_ADDR;
   private final int TEST_NODE_PORT_NUM = 5000;
@@ -28,9 +28,9 @@ public class PingTest {
   public void initialize() throws IOException {
     System.setProperty(
         "java.util.logging.SimpleFormatter.format", "[%1$tc] %4$s: %2$s - %5$s %6$s%n");
-    DOORMAN_IP_ADDR = InetAddress.getLocalHost();
+    BOOTSTRAP_NODE_IP_ADDR = InetAddress.getLocalHost();
     TEST_NODE_IP_ADDR = InetAddress.getLocalHost();
-    doorman = new SimpleChainNode(DOORMAN_IP_ADDR, DOORMAN_PORT_NUM, DOORMAN_NODE_NAME);
+    doorman = new SimpleChainNode(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM, BOOTSTRAP_NODE_NAME);
   }
 
   @After
@@ -47,7 +47,7 @@ public class PingTest {
     AtomicBoolean pingMessageReceived = new AtomicBoolean(false);
     doorman.addJournalListener(
         (nodeName, message) -> {
-          if (nodeName.equals(DOORMAN_NODE_NAME)
+          if (nodeName.equals(BOOTSTRAP_NODE_NAME)
               && message.equals(
                   "Received ping message from "
                       + TEST_NODE_IP_ADDR.getHostAddress()
@@ -64,15 +64,15 @@ public class PingTest {
           if (nodeName.equals(TEST_NODE_NAME)
               && message.equals(
                   "Received pong message from "
-                      + DOORMAN_IP_ADDR.getHostAddress()
+                      + BOOTSTRAP_NODE_IP_ADDR.getHostAddress()
                       + ":"
-                      + DOORMAN_PORT_NUM)) {
+                      + BOOTSTRAP_NODE_PORT_NUM)) {
             pongMessageReceived.set(true);
             lock.countDown();
           }
         });
 
-    node.sendPing(DOORMAN_IP_ADDR, DOORMAN_PORT_NUM, "testNonce");
+    node.sendPing(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM, "testNonce");
     lock.await(250, TimeUnit.MILLISECONDS);
     node.closeNode();
 
@@ -89,7 +89,7 @@ public class PingTest {
     AtomicBoolean pongMessageReceived = new AtomicBoolean(false);
     doorman.addJournalListener(
         (nodeName, message) -> {
-          if (nodeName.equals(DOORMAN_NODE_NAME)
+          if (nodeName.equals(BOOTSTRAP_NODE_NAME)
               && message.equals(
                   "Received pong message from "
                       + TEST_NODE_IP_ADDR.getHostAddress()

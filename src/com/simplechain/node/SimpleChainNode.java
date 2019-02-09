@@ -8,7 +8,9 @@ import com.simplechain.network.server.NetworkServer;
 import com.simplechain.network.server.NetworkServerInConnection;
 import com.simplechain.network.server.NetworkServerMessageHandler;
 import com.simplechain.protocol.NodeDiscoveryProtocol;
+import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessage;
 import com.simplechain.protocol.NodeProtocol;
+import java.net.UnknownHostException;
 import org.omg.CORBA.NO_IMPLEMENT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +81,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   }
 
   // Handles ping protocol by sending pong protocol back
-  public void handlePingMessage(String message) {
+  private void handlePingMessage(String message) {
     NodeProtocol.PingMessage pingMessage = gson.fromJson(message, NodeProtocol.PingMessage.class);
     sendJournalMessage(
         "Received ping message from "
@@ -87,32 +89,23 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
             + ":"
             + pingMessage.connectionPort);
 
-    NodeProtocol.PongMessage pongMessage =
-        new NodeProtocol.PongMessage(version, address.getHostAddress(), port, pingMessage.nonce);
-    try {
-      NetworkClient msgReply =
-          new NetworkClient(
-              InetAddress.getByName(pingMessage.connectionIp), pingMessage.connectionPort);
-      msgReply.sendData(pongMessage.toString());
-      msgReply.closeConnection();
-    } catch (Exception ex) {
-      LOG(
-          "ERROR! Could not send pong message to node address "
-              + pingMessage.connectionIp
-              + ":"
-              + pingMessage.connectionPort);
-    }
-    LOG(
-        "Pong message sent to node address "
-            + pingMessage.connectionIp
-            + ":"
-            + pingMessage.connectionPort);
+    sendPong(pingMessage.connectionIp, pingMessage.connectionPort, pingMessage.nonce);
   }
 
   // Handles pong protocol by doing nothing
-  public void handlePongMessage(String message) {
+  private void handlePongMessage(String message) {
     NodeProtocol.PongMessage pongMessage = gson.fromJson(message, NodeProtocol.PongMessage.class);
-    sendJournalMessage("Received pong message from " + pongMessage.connectionIp + ":" + pongMessage.connectionPort);
+    sendJournalMessage(
+        "Received pong message from "
+            + pongMessage.connectionIp
+            + ":"
+            + pongMessage.connectionPort);
+  }
+
+  private void handleRegisterNodeMessage(String message) {
+    NodeDiscoveryProtocol.RegisterMessage registerMessage = gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessage.class);
+    // TO_DO: If valid message, create NodeData and add it to active nodes list
+    // TO_DO: Send ACK message back to node
   }
 
   // Handles Hello handshake protocol for other node to register to this node
@@ -134,18 +127,16 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       }
   }*/
 
-  private void handleHelloMessage(String message) {}
-
   public void messageReceived(NetworkServerInConnection connection, String message) {
     LOG("Received message " + message.trim() + ". " + connection.toString());
     BaseMessage msg = gson.fromJson(message, BaseMessage.class);
 
-    if (msg.type.equalsIgnoreCase(NodeProtocol.PingMessage.TYPE)) {
+    if (msg.type.equals(NodeProtocol.PingMessage.TYPE)) {
       handlePingMessage(message);
-    } else if (msg.type.equalsIgnoreCase(NodeProtocol.PongMessage.TYPE)) {
+    } else if (msg.type.equals(NodeProtocol.PongMessage.TYPE)) {
       handlePongMessage(message);
-    } else {
-
+    } else if (msg.type.equals(RegisterMessage.TYPE)){
+      handleRegisterNodeMessage(message);
     } /*else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsg.TYPE)) {
           handleHelloMessage(message);
       } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsgAck.TYPE)) {
@@ -234,7 +225,6 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   // Sends ping message to given address
   public boolean sendPing(InetAddress senderAddress, int senderPortNum, String nonce) {
     LOG("Sending ping message to node address " + senderAddress.toString() + ":" + senderPortNum);
-
     NodeProtocol.PingMessage pingMessage =
         new NodeProtocol.PingMessage(version, address.getHostAddress(), port, nonce);
     try {
@@ -248,7 +238,45 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     }
   }
 
-  public boolean sendErrorMessageBack(
+  // Sends pong message to given address
+  public boolean sendPong(String senderAddressStr, int senderPortNum, String nonce) {
+    NodeProtocol.PongMessage pongMessage =
+        new NodeProtocol.PongMessage(version, address.getHostAddress(), port, nonce);
+    try {
+      InetAddress senderAddress = InetAddress.getByName(senderAddressStr);
+      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
+      msg.sendData(pongMessage.toString());
+      msg.closeConnection();
+      return true;
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      return false;
+    }
+  }
+
+  // Sends registration request to given address
+  public boolean sendRegistration(InetAddress senderAddress, int senderPortNum) {
+    LOG(
+        "Sending registration message to node address "
+            + senderAddress.toString()
+            + ":"
+            + senderPortNum);
+    NodeDiscoveryProtocol.RegisterMessage registerMessage =
+        new NodeDiscoveryProtocol.RegisterMessage(
+            nodeName, version, address.getHostAddress(), port);
+    try {
+      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
+      msg.sendData(registerMessage.toString());
+      msg.closeConnection();
+      return true;
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      return false;
+    }
+  }
+
+  // Sends error message
+  public boolean sendErrorMessage(
       InetAddress senderAddress, int senderPortNum, String messageBack) {
     LOG("Sending error message to node address " + senderAddress.toString() + ":" + senderPortNum);
     NodeProtocol.NodeErrorMsg errorMsg =

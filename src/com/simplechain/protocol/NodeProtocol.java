@@ -3,7 +3,7 @@ package com.simplechain.protocol;
 import com.simplechain.data.NodeData;
 
 // Node protocol messages
-public class NodeProtocol {
+public final class NodeProtocol {
 
   // Ping message for sending it to a node
   public static class PingMessage extends BaseMessage {
@@ -51,4 +51,7 @@ public class NodeProtocol {
       this.errorMsg = errorMsg;
     }
   }
+
+  // Private constructor
+  private NodeProtocol() {}
 }
