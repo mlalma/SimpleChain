@@ -9,6 +9,7 @@ import com.simplechain.network.server.NetworkServerInConnection;
 import com.simplechain.network.server.NetworkServerMessageHandler;
 import com.simplechain.protocol.NodeDiscoveryProtocol;
 import com.simplechain.protocol.NodeProtocol;
+import org.omg.CORBA.NO_IMPLEMENT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,8 +31,10 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   private final Gson gson = new Gson();
 
-  private HashMap<String, NodeData> networkNodes = new HashMap<>();
-  private HashMap<String, NodeData> potentialNetworkNodes = new HashMap<>();
+  private final HashMap<String, NodeData> networkNodes = new HashMap<>();
+  private final HashMap<String, NodeData> potentialNetworkNodes = new HashMap<>();
+
+  private final HashSet<NodeJournalListener> listeners = new HashSet<>();
 
   // Constructor
   public SimpleChainNode(InetAddress address, int serverPort, String nodeName) throws IOException {
@@ -43,9 +46,26 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     this.port = serverPort;
   }
 
-  // Helper logger
+  // Convenience logger helper method
   private void LOG(String message) {
     logger.info("Node ({}): {}", nodeName, message);
+  }
+
+  // Sends message to journal listeners
+  private void sendJournalMessage(String message) {
+    for (NodeJournalListener listener : listeners) {
+      listener.message(nodeName, message);
+    }
+  }
+
+  // Adds journal listener
+  public void addJournalListener(NodeJournalListener listener) {
+    listeners.add(listener);
+  }
+
+  // Removes journal listener
+  public void removeJournalListener(NodeJournalListener listener) {
+    listeners.remove(listener);
   }
 
   // New connection announcer
@@ -61,6 +81,12 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   // Handles ping protocol by sending pong protocol back
   public void handlePingMessage(String message) {
     NodeProtocol.PingMessage pingMessage = gson.fromJson(message, NodeProtocol.PingMessage.class);
+    sendJournalMessage(
+        "Received ping message from "
+            + pingMessage.connectionIp
+            + ":"
+            + pingMessage.connectionPort);
+
     NodeProtocol.PongMessage pongMessage =
         new NodeProtocol.PongMessage(version, address.getHostAddress(), port, pingMessage.nonce);
     try {
@@ -70,10 +96,14 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       msgReply.sendData(pongMessage.toString());
       msgReply.closeConnection();
     } catch (Exception ex) {
-      ex.printStackTrace();
+      LOG(
+          "ERROR! Could not send pong message to node address "
+              + pingMessage.connectionIp
+              + ":"
+              + pingMessage.connectionPort);
     }
     LOG(
-        "Pong protocol sent to node address "
+        "Pong message sent to node address "
             + pingMessage.connectionIp
             + ":"
             + pingMessage.connectionPort);
@@ -81,7 +111,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   // Handles pong protocol by doing nothing
   public void handlePongMessage(String message) {
-    LOG("Pong protocol received");
+    NodeProtocol.PongMessage pongMessage = gson.fromJson(message, NodeProtocol.PongMessage.class);
+    sendJournalMessage("Received pong message from " + pongMessage.connectionIp + ":" + pongMessage.connectionPort);
   }
 
   // Handles Hello handshake protocol for other node to register to this node
@@ -200,12 +231,12 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     potentialNetworkNodes.clear();*/
   }
 
-  public boolean sendPing(InetAddress senderAddress, int senderPortNum) {
-    LOG("Sending Ping message to node address " + senderAddress.toString() + ":" + senderPortNum);
+  // Sends ping message to given address
+  public boolean sendPing(InetAddress senderAddress, int senderPortNum, String nonce) {
+    LOG("Sending ping message to node address " + senderAddress.toString() + ":" + senderPortNum);
 
     NodeProtocol.PingMessage pingMessage =
-        new NodeProtocol.PingMessage(
-            version, address.getHostAddress(), port, UUID.randomUUID().toString());
+        new NodeProtocol.PingMessage(version, address.getHostAddress(), port, nonce);
     try {
       NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
       msg.sendData(pingMessage.toString());
@@ -219,7 +250,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   public boolean sendErrorMessageBack(
       InetAddress senderAddress, int senderPortNum, String messageBack) {
-    LOG("Sending Error message to node address " + senderAddress.toString() + ":" + senderPortNum);
+    LOG("Sending error message to node address " + senderAddress.toString() + ":" + senderPortNum);
     NodeProtocol.NodeErrorMsg errorMsg =
         new NodeProtocol.NodeErrorMsg(
             version,
@@ -235,5 +266,11 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       ex.printStackTrace();
       return false;
     }
+  }
+
+  // Closes node
+  public void closeNode() throws IOException {
+    server.close();
+    listeners.clear();
   }
 }

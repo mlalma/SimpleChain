@@ -28,6 +28,8 @@ public class NetworkServer extends Thread implements NetworkServerConnectionHand
   // Connections from other nodes
   private final Set<NetworkServerInConnection> serverConnections;
 
+  private boolean continueListeningConnections = true;
+
   // Constructor
   public NetworkServer(
       final int port,
@@ -59,9 +61,23 @@ public class NetworkServer extends Thread implements NetworkServerConnectionHand
         serverConnections.add(inConnection);
         messageHandler.newConnection(inConnection);
       } catch (IOException ex) {
-        ex.printStackTrace();
+      }
+
+      // Should continue listening for next message or is the server closed down?
+      synchronized (this) {
+        if (!continueListeningConnections) {
+          break;
+        }
       }
     }
+  }
+
+  // Closes down server
+  public void close() throws IOException {
+    synchronized (this) {
+      continueListeningConnections = false;
+    }
+    serverSocket.close();
   }
 
   // Closes connection when connection is done
