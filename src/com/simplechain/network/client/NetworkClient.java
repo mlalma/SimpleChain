@@ -9,29 +9,20 @@ import static com.google.common.base.Preconditions.checkNotNull;
 // Network client for sending data to another node
 public class NetworkClient {
 
-  // Socket to the other node
-  private final Socket socket;
-  // Writer for writing the data
-  private final PrintWriter writer;
-
-  // Constructor
-  public NetworkClient(final InetAddress address, final int port)
-      throws IOException, NullPointerException {
-    checkNotNull(address);
-    socket = new Socket(address, port);
-    writer = new PrintWriter(socket.getOutputStream(), true);
-  }
-
   // Sends data via socket
-  public void sendData(final String data) {
+  static public boolean sendData(final InetAddress address, final int port, final String data) {
+    checkNotNull(address);
     checkNotNull(data);
-    writer.print(data);
-    writer.flush();
+    try (Socket socket = new Socket(address, port);
+        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
+      writer.print(data);
+      writer.flush();
+    } catch (IOException e) {
+      return false;
+    }
+    return true;
   }
 
-  // Closes connection
-  public void closeConnection() throws IOException {
-    writer.close();
-    socket.close();
-  }
+  // Private constructor
+  private NetworkClient() {}
 }

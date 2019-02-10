@@ -1,13 +1,11 @@
 package com.simplechain.protocol;
 
-import com.simplechain.data.NodeData;
-
 // Node protocol messages
 public final class NodeProtocol {
 
   // Ping message for sending it to a node
   public static class PingMessage extends BaseMessage {
-    public static String TYPE = "PING_MSG";
+    public static final String TYPE = "PING_MSG";
 
     // Unique nonce to recognize the node in pong message reply
     public final String nonce;
@@ -25,7 +23,7 @@ public final class NodeProtocol {
 
   // Pong message, answering to ping message
   public static class PongMessage extends BaseMessage {
-    public static String TYPE = "PONG_MSG";
+    public static final String TYPE = "PONG_MSG";
 
     // Taken from ping message
     public final String nonce;

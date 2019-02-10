@@ -1,5 +1,8 @@
 package com.simplechain.node;
 
+import static com.simplechain.network.server.NetworkServer.MAX_PORT;
+import static com.simplechain.network.server.NetworkServer.MIN_PORT;
+
 import com.google.gson.Gson;
 import com.simplechain.data.NodeData;
 import com.simplechain.protocol.BaseMessage;
@@ -9,9 +12,9 @@ import com.simplechain.network.server.NetworkServerInConnection;
 import com.simplechain.network.server.NetworkServerMessageHandler;
 import com.simplechain.protocol.NodeDiscoveryProtocol;
 import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessage;
+import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessageACK;
 import com.simplechain.protocol.NodeProtocol;
-import java.net.UnknownHostException;
-import org.omg.CORBA.NO_IMPLEMENT;
+import static com.simplechain.util.SimpleChainUtil.wrap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +25,11 @@ import java.util.*;
 // SimpleChain Node code
 public class SimpleChainNode implements NetworkServerMessageHandler {
 
-  private static Logger logger = LoggerFactory.getLogger(SimpleChainNode.class);
+  private static final long REPLY_TIMEOUT_DELAY = 5000L;
+
+  private static final Logger logger = LoggerFactory.getLogger(SimpleChainNode.class);
+
+  private static final String CONNECTION_SYMBOL = "@";
 
   private final String nodeName;
   private final String version = "0.1";
@@ -32,14 +39,15 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   private final NetworkServer server;
 
   private final Gson gson = new Gson();
+  private final Timer taskTimer = new Timer();
 
   private final HashMap<String, NodeData> networkNodes = new HashMap<>();
-  private final HashMap<String, NodeData> potentialNetworkNodes = new HashMap<>();
-
+  private final Set<String> potentialNodes = new HashSet<>();
   private final HashSet<NodeJournalListener> listeners = new HashSet<>();
 
   // Constructor
-  public SimpleChainNode(InetAddress address, int serverPort, String nodeName) throws IOException {
+  public SimpleChainNode(final InetAddress address, final int serverPort, final String nodeName)
+      throws IOException {
     logger.info(
         "Launching node ({}) to address: {} port: {}", nodeName, address.toString(), serverPort);
     server = NetworkServer.startServer(serverPort, address, this);
@@ -49,39 +57,49 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   }
 
   // Convenience logger helper method
-  private void LOG(String message) {
+  private void LOG(final String message) {
     logger.info("Node ({}): {}", nodeName, message);
   }
 
   // Sends message to journal listeners
-  private void sendJournalMessage(String message) {
+  private void sendJournalMessage(final String message) {
     for (NodeJournalListener listener : listeners) {
       listener.message(nodeName, message);
     }
   }
 
   // Adds journal listener
-  public void addJournalListener(NodeJournalListener listener) {
+  public void addJournalListener(final NodeJournalListener listener) {
     listeners.add(listener);
   }
 
   // Removes journal listener
-  public void removeJournalListener(NodeJournalListener listener) {
+  public void removeJournalListener(final NodeJournalListener listener) {
     listeners.remove(listener);
   }
 
   // New connection announcer
-  public void newConnection(NetworkServerInConnection connection) {
+  public void newConnection(final NetworkServerInConnection connection) {
     LOG("New connection from: " + connection.toString());
   }
 
   // Connection closed with the remote node
-  public void connectionClosed(NetworkServerInConnection connection) {
+  public void connectionClosed(final NetworkServerInConnection connection) {
     LOG("Connection closed with: " + connection.toString());
   }
 
+  // Returns unique node id based on IP address and port
+  private String nodeId(String address, int port) {
+    return address + CONNECTION_SYMBOL + port;
+  }
+
+  // Returns unique node id based on IP address and port
+  private String nodeId(NodeData node) {
+    return nodeId(node.connectionIp, node.connectionPort);
+  }
+
   // Handles ping protocol by sending pong protocol back
-  private void handlePingMessage(String message) {
+  private void handlePingMessage(final String message) {
     NodeProtocol.PingMessage pingMessage = gson.fromJson(message, NodeProtocol.PingMessage.class);
     sendJournalMessage(
         "Received ping message from "
@@ -93,7 +111,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   }
 
   // Handles pong protocol by doing nothing
-  private void handlePongMessage(String message) {
+  private void handlePongMessage(final String message) {
     NodeProtocol.PongMessage pongMessage = gson.fromJson(message, NodeProtocol.PongMessage.class);
     sendJournalMessage(
         "Received pong message from "
@@ -102,175 +120,144 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
             + pongMessage.connectionPort);
   }
 
-  private void handleRegisterNodeMessage(String message) {
-    NodeDiscoveryProtocol.RegisterMessage registerMessage = gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessage.class);
-    // TO_DO: If valid message, create NodeData and add it to active nodes list
-    // TO_DO: Send ACK message back to node
+  // Handles register node message and sends ACK message back
+  private void handleRegisterNodeMessage(final String message) {
+    NodeDiscoveryProtocol.RegisterMessage registerMessage =
+        gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessage.class);
+
+    if (registerMessage.connectionIp != null
+        && registerMessage.connectionPort >= MIN_PORT
+        && registerMessage.connectionPort <= MAX_PORT) {
+      NodeData newNode = new NodeData();
+      newNode.connectionIp = registerMessage.connectionIp;
+      newNode.connectionPort = registerMessage.connectionPort;
+      newNode.lastMessageReceived = System.currentTimeMillis();
+      newNode.name = registerMessage.name;
+      newNode.version = registerMessage.version;
+
+      if (sendRegistrationAck(newNode)) {
+        networkNodes.put(nodeId(newNode), newNode);
+      }
+    }
   }
 
-  // Handles Hello handshake protocol for other node to register to this node
-  /*public void handleHelloMessage(String message) {
-      NodeDiscoveryProtocol.HelloMsg helloMsg = gson.fromJson(message, NodeDiscoveryProtocol.HelloMsg.class);
-      NodeDiscoveryProtocol.HelloMsgAck msgAck = new NodeDiscoveryProtocol.HelloMsgAck();
-      msgAck.connectionIp = address.getHostAddress();
-      msgAck.connectionPort = port;
-      msgAck.confirmation = true;
-      try {
-          NetworkClient msgReply = new NetworkClient(
-                  InetAddress.getByName(helloMsg.node.connectionIp),
-                  helloMsg.node.connectionPort);
-          msgReply.sendData(msgAck.toString());
-          msgReply.closeConnection();
-          LOG("HelloMsgAck sent to node (" + helloMsg.node.name + ")");
-      } catch (Exception ex) {
-          ex.printStackTrace();
-      }
-  }*/
+  // Handles register node ACK message
+  private void handleRegisterACKNodeMessage(final String message) {
+    NodeDiscoveryProtocol.RegisterMessageACK registerMessageACK =
+        gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessageACK.class);
 
+    if (registerMessageACK.connectionIp != null
+        && registerMessageACK.connectionPort >= MIN_PORT
+        && registerMessageACK.connectionPort <= MAX_PORT) {
+      NodeData newNode = new NodeData();
+      newNode.connectionIp = registerMessageACK.connectionIp;
+      newNode.connectionPort = registerMessageACK.connectionPort;
+      newNode.lastMessageReceived = System.currentTimeMillis();
+      newNode.name = registerMessageACK.name;
+      newNode.version = registerMessageACK.version;
+
+      String nodeId = nodeId(newNode);
+
+      if (potentialNodes.contains(nodeId)) {
+        networkNodes.put(nodeId, newNode);
+        potentialNodes.remove(nodeId);
+      }
+    }
+  }
+
+  // Message handler
   public void messageReceived(NetworkServerInConnection connection, String message) {
     LOG("Received message " + message.trim() + ". " + connection.toString());
     BaseMessage msg = gson.fromJson(message, BaseMessage.class);
+
+    // Check if need to update the last message received field for indicating active node
+    if (msg.connectionIp != null) {
+      String nodeId = msg.connectionIp + CONNECTION_SYMBOL + msg.connectionPort;
+      NodeData nodeData = networkNodes.get(nodeId);
+      if (nodeData != null) {
+        nodeData.lastMessageReceived = System.currentTimeMillis();
+      }
+    }
 
     if (msg.type.equals(NodeProtocol.PingMessage.TYPE)) {
       handlePingMessage(message);
     } else if (msg.type.equals(NodeProtocol.PongMessage.TYPE)) {
       handlePongMessage(message);
-    } else if (msg.type.equals(RegisterMessage.TYPE)){
+    } else if (msg.type.equals(RegisterMessage.TYPE)) {
       handleRegisterNodeMessage(message);
-    } /*else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsg.TYPE)) {
-          handleHelloMessage(message);
-      } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsgAck.TYPE)) {
-          NodeDiscoveryProtocol.HelloMsgAck helloMsgAck = gson.fromJson(message, NodeDiscoveryProtocol.HelloMsgAck.class);
-          NodeData nodeData = potentialNetworkNodes.get(helloMsgAck.connectionIp + ":" + helloMsgAck.connectionPort);
-      } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.RequestNodeListReplyMsg.TYPE)) {
-          NodeDiscoveryProtocol.RequestNodeListReplyMsg requestNodeListReplyMsg =
-                  gson.fromJson(message, NodeDiscoveryProtocol.RequestNodeListReplyMsg.class);
-
-          for (NodeData potentialNode : requestNodeListReplyMsg.nodeList) {
-              String nodeIdentifier = potentialNode.connectionIp + ":" + potentialNode.connectionPort;
-              if (networkNodes.get(nodeIdentifier) == null) {
-                  potentialNetworkNodes.put(nodeIdentifier, potentialNode);
-              }
-          }
-          LOG("Received a new list of network nodes. New node count on network: " + potentialNetworkNodes.size());
-      }
-       /*   NodeDiscoveryProtocol.NodeDiscoveryData nodeData = node;
-          nodeData.lastDataPacketReceived = System.currentTimeMillis();
-
-          if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsgAck.TYPE)) {
-              NodeDiscoveryProtocol.HelloMsgAck msgAck = gson.fromJson(protocol, NodeDiscoveryProtocol.HelloMsgAck.class);
-              if (msgAck.confirmation) {
-                  NodeDiscoveryProtocol.HelloMsgAckAck msgAckAck = new NodeDiscoveryProtocol.HelloMsgAckAck();
-                  msgAckAck.confirmation = true;
-                  msgAckAck.type = NodeDiscoveryProtocol.HelloMsgAckAck.TYPE;
-                  node.outConnection.sendData(msgAckAck.toString());
-              }
-          } else  else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.HelloMsgAckAck.TYPE)) {
-              if (!nodeData.connectionConfirmed) {
-                  Log.debug("Hello protocol ack ack received. " + connection.toString());
-                  nodeData.connectionConfirmed = true;
-              } else {
-                  NodeDiscoveryProtocol.NodeDiscoveryErrorMsg errorMsg = new NodeDiscoveryProtocol.NodeDiscoveryErrorMsg();
-                  errorMsg.errorCode = -101;
-                  errorMsg.errorMsg = "Invalid protocol, connection ack ack already received";
-                  nodeData.outConnection.sendData(errorMsg.toString());
-              }
-          } else if (msg.type.equalsIgnoreCase(NodeDiscoveryProtocol.RequestNodeListMsg.TYPE)) {
-              Log.debug("Request for returning all available nodes. " + connection.toString());
-              NodeDiscoveryProtocol.RequestNodeListMsg nodeListMsg = gson.fromJson(protocol, NodeDiscoveryProtocol.RequestNodeListMsg.class);
-
-              List<NodeDiscoveryProtocol.NodeDiscoveryData> includedNodes;
-              if (nodeListMsg.maxCount > 0) {
-                  List<NodeDiscoveryProtocol.NodeDiscoveryData> nodes = new ArrayList<>(networkNodes);
-                  Collections.shuffle(nodes);
-                  includedNodes = nodes.stream()
-                          .filter(filteredConnection -> filteredConnection.inConnection != connection)
-                          .filter(filteredConnection -> filteredConnection.connectionConfirmed)
-                          .limit(nodeListMsg.maxCount)
-                          .collect(Collectors.toList());
-              } else {
-                  includedNodes = new ArrayList<>();
-              }
-
-              NodeDiscoveryProtocol.RequestNodeListReplyMsg nodeListReplyMsg = new NodeDiscoveryProtocol.RequestNodeListReplyMsg();
-              nodeListReplyMsg.nodeList = includedNodes;
-              nodeData.outConnection.sendData(nodeListReplyMsg.toString());
-          }
-      }*/
-  }
-
-  public void connectToNodes() throws IOException {
-    /*logger.info("Starting to connect to other nodes");
-    for (NodeDiscoveryProtocol.NodeDiscoveryData potentialNode : potentialNetworkNodes.values()) {
-        NodeDiscoveryProtocol.HelloMsg helloMsg = new NodeDiscoveryProtocol.HelloMsg();
-        NodeDiscoveryProtocol.NodeDiscoveryData node = new NodeDiscoveryProtocol.NodeDiscoveryData();
-        node.version = version;
-        node.name = nodeName;
-        node.connectionIp = this.address.getHostAddress();
-        node.connectionPort = this.port;
-
-        helloMsg.node = node;
-
-        NetworkClient helloMsgSender = new NetworkClient(
-                InetAddress.getByName(potentialNode.connectionIp),
-                potentialNode.connectionPort);
-
-        logger.info("Sending hello protocol from node (" + nodeName +") to node (" + potentialNode.name + ")");
-        helloMsgSender.sendData(helloMsg.toString());
+    } else if (msg.type.equals(RegisterMessageACK.TYPE)) {
+      handleRegisterACKNodeMessage(message);
     }
-
-    potentialNetworkNodes.clear();*/
   }
 
   // Sends ping message to given address
   public boolean sendPing(InetAddress senderAddress, int senderPortNum, String nonce) {
-    LOG("Sending ping message to node address " + senderAddress.toString() + ":" + senderPortNum);
+    LOG("Sending ping message to " + senderAddress.toString() + ":" + senderPortNum);
     NodeProtocol.PingMessage pingMessage =
         new NodeProtocol.PingMessage(version, address.getHostAddress(), port, nonce);
+
+    return NetworkClient.sendData(senderAddress, senderPortNum, pingMessage.toString());
+  }
+
+  // Sends ping to tracked node
+  public boolean sendPing(NodeData data, String nonce) {
     try {
-      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
-      msg.sendData(pingMessage.toString());
-      msg.closeConnection();
-      return true;
+      InetAddress address = InetAddress.getByName(data.connectionIp);
+      data.lastMessageSent = System.currentTimeMillis();
+      return sendPing(address, data.connectionPort, nonce);
     } catch (Exception ex) {
-      ex.printStackTrace();
       return false;
     }
   }
 
   // Sends pong message to given address
   public boolean sendPong(String senderAddressStr, int senderPortNum, String nonce) {
+    LOG("Sending pong message to " + senderAddressStr + ":" + senderPortNum);
+
     NodeProtocol.PongMessage pongMessage =
         new NodeProtocol.PongMessage(version, address.getHostAddress(), port, nonce);
+
     try {
       InetAddress senderAddress = InetAddress.getByName(senderAddressStr);
-      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
-      msg.sendData(pongMessage.toString());
-      msg.closeConnection();
-      return true;
+      return NetworkClient.sendData(senderAddress, senderPortNum, pongMessage.toString());
     } catch (Exception ex) {
-      ex.printStackTrace();
       return false;
     }
   }
 
   // Sends registration request to given address
-  public boolean sendRegistration(InetAddress senderAddress, int senderPortNum) {
-    LOG(
-        "Sending registration message to node address "
-            + senderAddress.toString()
-            + ":"
-            + senderPortNum);
+  public boolean sendRegistration(InetAddress targetNodeAddress, int targetNodePort) {
+    LOG("Sending registration message to " + targetNodeAddress.toString() + ":" + targetNodePort);
+
     NodeDiscoveryProtocol.RegisterMessage registerMessage =
         new NodeDiscoveryProtocol.RegisterMessage(
             nodeName, version, address.getHostAddress(), port);
-    try {
-      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
-      msg.sendData(registerMessage.toString());
-      msg.closeConnection();
+
+    if (NetworkClient.sendData(targetNodeAddress, targetNodePort, registerMessage.toString())) {
+      final String potentialNodeId = nodeId(targetNodeAddress.getHostAddress(), targetNodePort);
+      potentialNodes.add(potentialNodeId);
+      // If reply does not arrive soon enough, remove node from potential node pool
+      taskTimer.schedule(wrap(() -> potentialNodes.remove(potentialNodeId)), REPLY_TIMEOUT_DELAY);
+
       return true;
+    } else {
+      return false;
+    }
+  }
+
+  // Sends registration ACK message back
+  public boolean sendRegistrationAck(NodeData data) {
+    LOG("Sending registration ACK message to " + data.connectionIp + ":" + data.connectionPort);
+
+    try {
+      InetAddress senderAddress = InetAddress.getByName(data.connectionIp);
+      NodeDiscoveryProtocol.RegisterMessageACK registerMessageACK =
+          new NodeDiscoveryProtocol.RegisterMessageACK(
+              nodeName, version, address.getHostAddress(), port);
+
+      return NetworkClient.sendData(
+          senderAddress, data.connectionPort, registerMessageACK.toString());
     } catch (Exception ex) {
-      ex.printStackTrace();
       return false;
     }
   }
@@ -278,22 +265,15 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   // Sends error message
   public boolean sendErrorMessage(
       InetAddress senderAddress, int senderPortNum, String messageBack) {
-    LOG("Sending error message to node address " + senderAddress.toString() + ":" + senderPortNum);
+    LOG("Sending error message to " + senderAddress.toString() + ":" + senderPortNum);
     NodeProtocol.NodeErrorMsg errorMsg =
         new NodeProtocol.NodeErrorMsg(
             version,
             address.getHostAddress(),
             port,
             "Invalid error protocol, not recognized by the Node");
-    try {
-      NetworkClient msg = new NetworkClient(senderAddress, senderPortNum);
-      msg.sendData(errorMsg.toString());
-      msg.closeConnection();
-      return true;
-    } catch (Exception ex) {
-      ex.printStackTrace();
-      return false;
-    }
+
+    return NetworkClient.sendData(senderAddress, senderPortNum, errorMsg.toString());
   }
 
   // Closes node

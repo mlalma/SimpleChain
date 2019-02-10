@@ -44,9 +44,9 @@ public class Main {
       CommandLineParser parser = new DefaultParser();
       CommandLine cmd = parser.parse(options, args);
 
-      String hostName = null;
-      int port = -1;
-      String name = null;
+      String hostName;
+      int port;
+      String name;
       if (cmd.hasOption("h") && cmd.hasOption("p")) {
         hostName = cmd.getOptionValue("h");
         port = Integer.valueOf(cmd.getOptionValue("p"));

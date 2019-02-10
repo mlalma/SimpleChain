@@ -73,7 +73,11 @@ public class NetworkServer extends Thread implements NetworkServerConnectionHand
   }
 
   // Closes down server
-  public void close() throws IOException {
+  public void close() throws IOException, IllegalStateException {
+    if (serverSocket.isClosed()) {
+      throw new IllegalStateException("Server already closed");
+    }
+
     synchronized (this) {
       continueListeningConnections = false;
     }
