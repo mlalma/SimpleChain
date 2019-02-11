@@ -1,5 +1,3 @@
-package com.tests;
-
 import com.simplechain.node.SimpleChainNode;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -11,7 +9,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class PingTest {
+public class RegistrationTest {
 
   private InetAddress BOOTSTRAP_NODE_IP_ADDR;
   private final int BOOTSTRAP_NODE_PORT_NUM = 4444;
@@ -30,7 +28,8 @@ public class PingTest {
         "java.util.logging.SimpleFormatter.format", "[%1$tc] %4$s: %2$s - %5$s %6$s%n");
     BOOTSTRAP_NODE_IP_ADDR = InetAddress.getLocalHost();
     TEST_NODE_IP_ADDR = InetAddress.getLocalHost();
-    bootstrap = new SimpleChainNode(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM, BOOTSTRAP_NODE_NAME);
+    bootstrap = new SimpleChainNode(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM,
+        BOOTSTRAP_NODE_NAME);
   }
 
   @After
@@ -39,71 +38,74 @@ public class PingTest {
   }
 
   @Test
-  public void testPing() throws IOException, InterruptedException {
-    lock = new CountDownLatch(2);
+  public void testSendRegistration() throws Exception {
+    lock = new CountDownLatch(1);
+
     SimpleChainNode node =
         new SimpleChainNode(TEST_NODE_IP_ADDR, TEST_NODE_PORT_NUM, TEST_NODE_NAME);
 
-    AtomicBoolean pingMessageReceived = new AtomicBoolean(false);
+    AtomicBoolean regMessageReceived = new AtomicBoolean(false);
     bootstrap.addJournalListener(
         (nodeName, message) -> {
           if (nodeName.equals(BOOTSTRAP_NODE_NAME)
               && message.equals(
-                  "Received ping message from "
-                      + TEST_NODE_IP_ADDR.getHostAddress()
-                      + ":"
-                      + TEST_NODE_PORT_NUM)) {
-            pingMessageReceived.set(true);
+              "Received registration message from "
+                  + TEST_NODE_IP_ADDR.getHostAddress()
+                  + ":"
+                  + TEST_NODE_PORT_NUM)) {
+            regMessageReceived.set(true);
             lock.countDown();
           }
         });
 
-    AtomicBoolean pongMessageReceived = new AtomicBoolean(false);
+    node.sendRegistration(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM);
+
+    lock.await(250, TimeUnit.MILLISECONDS);
+    node.closeNode();
+
+    Assert.assertTrue(regMessageReceived.get());
+  }
+
+  @Test
+  public void testSendRegistrationACKBack() throws Exception {
+    lock = new CountDownLatch(2);
+
+    SimpleChainNode node =
+        new SimpleChainNode(TEST_NODE_IP_ADDR, TEST_NODE_PORT_NUM, TEST_NODE_NAME);
+
+    AtomicBoolean regMessageReceived = new AtomicBoolean(false);
+    bootstrap.addJournalListener(
+        (nodeName, message) -> {
+          if (nodeName.equals(BOOTSTRAP_NODE_NAME)
+              && message.equals(
+              "Received registration message from "
+                  + TEST_NODE_IP_ADDR.getHostAddress()
+                  + ":"
+                  + TEST_NODE_PORT_NUM)) {
+            regMessageReceived.set(true);
+            lock.countDown();
+          }
+        });
+    node.sendRegistration(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM);
+
+    AtomicBoolean regMessageACKReceived = new AtomicBoolean(false);
     node.addJournalListener(
         (nodeName, message) -> {
           if (nodeName.equals(TEST_NODE_NAME)
               && message.equals(
-                  "Received pong message from "
-                      + BOOTSTRAP_NODE_IP_ADDR.getHostAddress()
-                      + ":"
-                      + BOOTSTRAP_NODE_PORT_NUM)) {
-            pongMessageReceived.set(true);
+              "Received registration ack message from "
+                  + BOOTSTRAP_NODE_IP_ADDR.getHostAddress()
+                  + ":"
+                  + BOOTSTRAP_NODE_PORT_NUM)) {
+            regMessageACKReceived.set(true);
             lock.countDown();
           }
         });
 
-    node.sendPing(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM, "testNonce");
     lock.await(250, TimeUnit.MILLISECONDS);
     node.closeNode();
 
-    Assert.assertTrue(pingMessageReceived.get());
-    Assert.assertTrue(pongMessageReceived.get());
-  }
-
-  @Test
-  public void testPong() throws IOException, InterruptedException {
-    lock = new CountDownLatch(1);
-    SimpleChainNode node =
-        new SimpleChainNode(TEST_NODE_IP_ADDR, TEST_NODE_PORT_NUM, TEST_NODE_NAME);
-
-    AtomicBoolean pongMessageReceived = new AtomicBoolean(false);
-    bootstrap.addJournalListener(
-        (nodeName, message) -> {
-          if (nodeName.equals(BOOTSTRAP_NODE_NAME)
-              && message.equals(
-                  "Received pong message from "
-                      + TEST_NODE_IP_ADDR.getHostAddress()
-                      + ":"
-                      + TEST_NODE_PORT_NUM)) {
-            pongMessageReceived.set(true);
-            lock.countDown();
-          }
-        });
-
-    bootstrap.sendPing(TEST_NODE_IP_ADDR, TEST_NODE_PORT_NUM, "testNonce");
-    lock.await(250, TimeUnit.MILLISECONDS);
-    node.closeNode();
-
-    Assert.assertTrue(pongMessageReceived.get());
+    Assert.assertTrue(regMessageReceived.get());
+    Assert.assertTrue(regMessageACKReceived.get());
   }
 }

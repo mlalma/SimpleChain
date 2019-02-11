@@ -11,10 +11,13 @@ import com.simplechain.network.server.NetworkServer;
 import com.simplechain.network.server.NetworkServerInConnection;
 import com.simplechain.network.server.NetworkServerMessageHandler;
 import com.simplechain.protocol.NodeDiscoveryProtocol;
+import com.simplechain.protocol.NodeDiscoveryProtocol.NodeDiscoveryQueryMessage;
 import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessage;
 import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessageACK;
 import com.simplechain.protocol.NodeProtocol;
+
 import static com.simplechain.util.SimpleChainUtil.wrap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -125,6 +128,12 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     NodeDiscoveryProtocol.RegisterMessage registerMessage =
         gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessage.class);
 
+    sendJournalMessage(
+        "Received registration message from "
+            + registerMessage.connectionIp
+            + ":"
+            + registerMessage.connectionPort);
+
     if (registerMessage.connectionIp != null
         && registerMessage.connectionPort >= MIN_PORT
         && registerMessage.connectionPort <= MAX_PORT) {
@@ -143,8 +152,13 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   // Handles register node ACK message
   private void handleRegisterACKNodeMessage(final String message) {
-    NodeDiscoveryProtocol.RegisterMessageACK registerMessageACK =
-        gson.fromJson(message, NodeDiscoveryProtocol.RegisterMessageACK.class);
+    RegisterMessageACK registerMessageACK = gson.fromJson(message, RegisterMessageACK.class);
+
+    sendJournalMessage(
+        "Received registration ack message from "
+            + registerMessageACK.connectionIp
+            + ":"
+            + registerMessageACK.connectionPort);
 
     if (registerMessageACK.connectionIp != null
         && registerMessageACK.connectionPort >= MIN_PORT
@@ -164,6 +178,24 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       }
     }
   }
+
+  private void handleNodeDiscoveryQueryMessage(String message) {
+    NodeDiscoveryQueryMessage queryMessage = gson
+        .fromJson(message, NodeDiscoveryQueryMessage.class);
+
+    sendJournalMessage(
+        "Received node discovery request from "
+            + queryMessage.connectionIp
+            + ":"
+            + queryMessage.connectionPort);
+
+    if (queryMessage.connectionIp != null && queryMessage.connectionPort >= MIN_PORT && queryMessage.connectionPort <= MAX_PORT) {
+      // TO_DO: Send message back with list of nodes
+    }
+  }
+
+  // TO_DO: Heartbeat to send connection live messages consistently
+  // TO_DO: Tests for the node discovery & node discovery list back
 
   // Message handler
   public void messageReceived(NetworkServerInConnection connection, String message) {
@@ -187,6 +219,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       handleRegisterNodeMessage(message);
     } else if (msg.type.equals(RegisterMessageACK.TYPE)) {
       handleRegisterACKNodeMessage(message);
+    } else if (msg.type.equals(NodeDiscoveryQueryMessage.TYPE)) {
+      handleNodeDiscoveryQueryMessage(message);
     }
   }
 
@@ -229,9 +263,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   public boolean sendRegistration(InetAddress targetNodeAddress, int targetNodePort) {
     LOG("Sending registration message to " + targetNodeAddress.toString() + ":" + targetNodePort);
 
-    NodeDiscoveryProtocol.RegisterMessage registerMessage =
-        new NodeDiscoveryProtocol.RegisterMessage(
-            nodeName, version, address.getHostAddress(), port);
+    RegisterMessage registerMessage = new RegisterMessage(
+        nodeName, version, address.getHostAddress(), port);
 
     if (NetworkClient.sendData(targetNodeAddress, targetNodePort, registerMessage.toString())) {
       final String potentialNodeId = nodeId(targetNodeAddress.getHostAddress(), targetNodePort);
@@ -250,13 +283,27 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     LOG("Sending registration ACK message to " + data.connectionIp + ":" + data.connectionPort);
 
     try {
-      InetAddress senderAddress = InetAddress.getByName(data.connectionIp);
-      NodeDiscoveryProtocol.RegisterMessageACK registerMessageACK =
-          new NodeDiscoveryProtocol.RegisterMessageACK(
-              nodeName, version, address.getHostAddress(), port);
+      InetAddress targetAddress = InetAddress.getByName(data.connectionIp);
+      RegisterMessageACK registerMessageACK = new RegisterMessageACK(
+          nodeName, version, address.getHostAddress(), port);
 
       return NetworkClient.sendData(
-          senderAddress, data.connectionPort, registerMessageACK.toString());
+          targetAddress, data.connectionPort, registerMessageACK.toString());
+    } catch (Exception ex) {
+      return false;
+    }
+  }
+
+  // Sends node discovery query message
+  public boolean sendNodeDiscoveryQuery(InetAddress targetAddress, int targetPortNum) {
+    LOG("Sending node discovery message to " + targetAddress.getHostAddress() + ":"
+        + targetPortNum);
+
+    try {
+      NodeDiscoveryQueryMessage queryMessage = new NodeDiscoveryQueryMessage(nodeName, version,
+          address.getHostAddress(), port);
+
+      return NetworkClient.sendData(targetAddress, targetPortNum, queryMessage.toString());
     } catch (Exception ex) {
       return false;
     }
@@ -264,8 +311,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   // Sends error message
   public boolean sendErrorMessage(
-      InetAddress senderAddress, int senderPortNum, String messageBack) {
-    LOG("Sending error message to " + senderAddress.toString() + ":" + senderPortNum);
+      InetAddress targetAddress, int targetPortNum, String messageBack) {
+    LOG("Sending error message to " + targetAddress.toString() + ":" + targetPortNum);
     NodeProtocol.NodeErrorMsg errorMsg =
         new NodeProtocol.NodeErrorMsg(
             version,
@@ -273,7 +320,7 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
             port,
             "Invalid error protocol, not recognized by the Node");
 
-    return NetworkClient.sendData(senderAddress, senderPortNum, errorMsg.toString());
+    return NetworkClient.sendData(targetAddress, targetPortNum, errorMsg.toString());
   }
 
   // Closes node

@@ -29,6 +29,34 @@ public final class NodeDiscoveryProtocol {
     }
   }
 
+  // Message to query all nodes that the target node has connection to
+  public static class NodeDiscoveryQueryMessage extends BaseMessage {
+    public static final String TYPE = "NODE_DISCOVERY_Q_MSG";
+    public static final int DEFAULT_NODE_COUNT = 10;
+
+    public final int maxNodeCount;
+
+    public NodeDiscoveryQueryMessage(
+        final String name,
+        final String protocolVersion,
+        final String senderIp,
+        final int senderPort) {
+      super (name, protocolVersion, senderIp, senderPort, TYPE);
+      maxNodeCount = DEFAULT_NODE_COUNT;
+    }
+
+    public NodeDiscoveryQueryMessage(
+        final String name,
+        final String protocolVersion,
+        final String senderIp,
+        final int senderPort,
+        final int maxNodeCount) {
+      super (name, protocolVersion, senderIp, senderPort, TYPE);
+      this.maxNodeCount = maxNodeCount;
+    }
+
+  }
+
   // Private constructor
   private NodeDiscoveryProtocol() {}
 }
