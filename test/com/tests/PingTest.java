@@ -2,41 +2,13 @@ package com.tests;
 
 import com.simplechain.node.SimpleChainNode;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
-public class PingTest {
-
-  private InetAddress BOOTSTRAP_NODE_IP_ADDR;
-  private final int BOOTSTRAP_NODE_PORT_NUM = 4444;
-  private final String BOOTSTRAP_NODE_NAME = "Bootstrap";
-
-  private InetAddress TEST_NODE_IP_ADDR;
-  private final int TEST_NODE_PORT_NUM = 5000;
-  private final String TEST_NODE_NAME = "Node1";
-
-  private CountDownLatch lock;
-  private SimpleChainNode bootstrap;
-
-  @Before
-  public void initialize() throws IOException {
-    System.setProperty(
-        "java.util.logging.SimpleFormatter.format", "[%1$tc] %4$s: %2$s - %5$s %6$s%n");
-    BOOTSTRAP_NODE_IP_ADDR = InetAddress.getLocalHost();
-    TEST_NODE_IP_ADDR = InetAddress.getLocalHost();
-    bootstrap = new SimpleChainNode(BOOTSTRAP_NODE_IP_ADDR, BOOTSTRAP_NODE_PORT_NUM, BOOTSTRAP_NODE_NAME);
-  }
-
-  @After
-  public void deInitialize() throws IOException {
-    bootstrap.closeNode();
-  }
+public class PingTest extends NodeTestBase {
 
   @Test
   public void testPing() throws IOException, InterruptedException {

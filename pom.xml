@@ -25,7 +25,7 @@
       </resource>
     </resources>
 
-    <testSourceDirectory>${project.basedir}/test/com/tests</testSourceDirectory>
+    <testSourceDirectory>test</testSourceDirectory>
 
     <plugins>
       <plugin>

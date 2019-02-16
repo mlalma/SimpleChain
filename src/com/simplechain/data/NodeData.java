@@ -5,6 +5,6 @@ public class NodeData {
     public String version;
     public String connectionIp;
     public int connectionPort;
-    public long lastMessageReceived;
-    public long lastMessageSent;
+    public transient long lastMessageReceived;
+    public transient long lastMessageSent;
 }

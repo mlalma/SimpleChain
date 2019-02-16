@@ -12,12 +12,16 @@ import com.simplechain.network.server.NetworkServerInConnection;
 import com.simplechain.network.server.NetworkServerMessageHandler;
 import com.simplechain.protocol.NodeDiscoveryProtocol;
 import com.simplechain.protocol.NodeDiscoveryProtocol.NodeDiscoveryQueryMessage;
+import com.simplechain.protocol.NodeDiscoveryProtocol.NodeDiscoveryReplyMessage;
 import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessage;
 import com.simplechain.protocol.NodeDiscoveryProtocol.RegisterMessageACK;
 import com.simplechain.protocol.NodeProtocol;
 
 import static com.simplechain.util.SimpleChainUtil.wrap;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import javax.xml.soap.Node;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +51,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   private final HashMap<String, NodeData> networkNodes = new HashMap<>();
   private final Set<String> potentialNodes = new HashSet<>();
   private final HashSet<NodeJournalListener> listeners = new HashSet<>();
+
+  private final Random rnd = new Random();
 
   // Constructor
   public SimpleChainNode(final InetAddress address, final int serverPort, final String nodeName)
@@ -179,9 +185,10 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
     }
   }
 
+  // Handles node discovery query message and sends list back
   private void handleNodeDiscoveryQueryMessage(String message) {
-    NodeDiscoveryQueryMessage queryMessage = gson
-        .fromJson(message, NodeDiscoveryQueryMessage.class);
+    NodeDiscoveryQueryMessage queryMessage =
+        gson.fromJson(message, NodeDiscoveryQueryMessage.class);
 
     sendJournalMessage(
         "Received node discovery request from "
@@ -189,13 +196,43 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
             + ":"
             + queryMessage.connectionPort);
 
-    if (queryMessage.connectionIp != null && queryMessage.connectionPort >= MIN_PORT && queryMessage.connectionPort <= MAX_PORT) {
-      // TO_DO: Send message back with list of nodes
+    if (queryMessage.connectionIp != null
+        && queryMessage.connectionPort >= MIN_PORT
+        && queryMessage.connectionPort <= MAX_PORT) {
+      HashSet<NodeData> returnedNodes = new HashSet<>();
+      Object[] nodes = networkNodes.keySet().toArray();
+      while (returnedNodes.size() < nodes.length
+          && returnedNodes.size() < queryMessage.maxNodeCount) {
+        returnedNodes.add(networkNodes.get(nodes[rnd.nextInt(nodes.length)]));
+      }
+
+      sendNodeDiscoveryReplyMsg(
+          queryMessage.connectionIp, queryMessage.connectionPort, returnedNodes);
     }
   }
 
-  // TO_DO: Heartbeat to send connection live messages consistently
-  // TO_DO: Tests for the node discovery & node discovery list back
+  private void handleNodeDiscoveryReplyMessage(String message) {
+    NodeDiscoveryReplyMessage replyMessage =
+        gson.fromJson(message, NodeDiscoveryReplyMessage.class);
+
+    sendJournalMessage(
+        "Received node discovery reply from "
+            + replyMessage.connectionIp
+            + ":"
+            + replyMessage.connectionPort);
+
+    if (replyMessage.connectionIp != null
+        && replyMessage.connectionPort >= MIN_PORT
+        && replyMessage.connectionPort <= MAX_PORT) {
+
+      for (NodeData n : replyMessage.nodes) {
+        final String potentialNodeId = nodeId(n.connectionIp, n.connectionPort);
+        potentialNodes.add(potentialNodeId);
+      }
+    }
+  }
+
+  // TODO: Heartbeat to send connection live messages consistently
 
   // Message handler
   public void messageReceived(NetworkServerInConnection connection, String message) {
@@ -221,6 +258,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
       handleRegisterACKNodeMessage(message);
     } else if (msg.type.equals(NodeDiscoveryQueryMessage.TYPE)) {
       handleNodeDiscoveryQueryMessage(message);
+    } else if (msg.type.equals(NodeDiscoveryReplyMessage.TYPE)) {
+      handleNodeDiscoveryReplyMessage(message);
     }
   }
 
@@ -263,8 +302,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
   public boolean sendRegistration(InetAddress targetNodeAddress, int targetNodePort) {
     LOG("Sending registration message to " + targetNodeAddress.toString() + ":" + targetNodePort);
 
-    RegisterMessage registerMessage = new RegisterMessage(
-        nodeName, version, address.getHostAddress(), port);
+    RegisterMessage registerMessage =
+        new RegisterMessage(nodeName, version, address.getHostAddress(), port);
 
     if (NetworkClient.sendData(targetNodeAddress, targetNodePort, registerMessage.toString())) {
       final String potentialNodeId = nodeId(targetNodeAddress.getHostAddress(), targetNodePort);
@@ -284,8 +323,8 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
     try {
       InetAddress targetAddress = InetAddress.getByName(data.connectionIp);
-      RegisterMessageACK registerMessageACK = new RegisterMessageACK(
-          nodeName, version, address.getHostAddress(), port);
+      RegisterMessageACK registerMessageACK =
+          new RegisterMessageACK(nodeName, version, address.getHostAddress(), port);
 
       return NetworkClient.sendData(
           targetAddress, data.connectionPort, registerMessageACK.toString());
@@ -296,14 +335,32 @@ public class SimpleChainNode implements NetworkServerMessageHandler {
 
   // Sends node discovery query message
   public boolean sendNodeDiscoveryQuery(InetAddress targetAddress, int targetPortNum) {
-    LOG("Sending node discovery message to " + targetAddress.getHostAddress() + ":"
-        + targetPortNum);
+    LOG(
+        "Sending node discovery message to "
+            + targetAddress.getHostAddress()
+            + ":"
+            + targetPortNum);
 
     try {
-      NodeDiscoveryQueryMessage queryMessage = new NodeDiscoveryQueryMessage(nodeName, version,
-          address.getHostAddress(), port);
+      NodeDiscoveryQueryMessage queryMessage =
+          new NodeDiscoveryQueryMessage(nodeName, version, address.getHostAddress(), port);
 
       return NetworkClient.sendData(targetAddress, targetPortNum, queryMessage.toString());
+    } catch (Exception ex) {
+      return false;
+    }
+  }
+
+  public boolean sendNodeDiscoveryReplyMsg(
+      String targetAddress, int targetPortNum, Set<NodeData> nodes) {
+    LOG("Sending node discovery reply message to " + targetAddress + ":" + targetPortNum);
+
+    try {
+      InetAddress targetInetAddress = InetAddress.getByName(targetAddress);
+      NodeDiscoveryReplyMessage replyMessage =
+          new NodeDiscoveryReplyMessage(nodeName, version, address.getHostAddress(), port, nodes);
+
+      return NetworkClient.sendData(targetInetAddress, targetPortNum, replyMessage.toString());
     } catch (Exception ex) {
       return false;
     }
